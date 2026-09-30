@@ -136,7 +136,7 @@ const TOOLS: OAITool[] = BRAVE_SEARCH_KEY
         type: 'function',
         function: {
           name: 'web_search',
-          description: 'Procura informação atual na web.',
+          description: 'Procura informação atual na web. Resuma sempre os resultados em português, mesmo que as fontes estejam em inglês ou outro idioma.',
           parameters: {
             type: 'object',
             properties: {
