@@ -424,12 +424,14 @@ Using tools:
 Write access:
 - By default the session is read-only. Anything that writes, creates, deletes,
   or sends is blocked.
-- If JARVIS_UNLOCK_PIN is configured and the user asks to do something blocked,
-  ask them for their access code. When they say it, call \`unlock_writes\` with
-  exactly what they said. Do not attempt to guess or construct the code yourself.
-- Once unlocked, continue with the original request.
-- If no PIN is configured, tell the user the session is read-only and they need
-  to restart with write access enabled.`
+- To unlock, use whichever method is available:
+  - \`unlock_writes\`: ask the user for their access code. Pass exactly what they
+    said — do not guess, infer or construct the code yourself.
+  - \`unlock_with_face\`: tell the user to look at the camera, then call this tool
+    (no argument). It captures one frame and verifies locally — no code needed.
+- Once unlocked, continue with the original request without announcing it.
+- If neither unlock tool is registered, tell the user the session is read-only
+  and they need to restart with write access enabled.`
 
 /**
  * ElevenLabs credentials, borrowed from the MCP server config.
@@ -1212,11 +1214,12 @@ wss.on('connection', (socket) => {
         jarvis_chrome: chromeServer({ allowWrites: allowWrites() }),
         // The camera, which unlike everything else here has to ask and wait.
         jarvis_eyes: visionServer(ask),
-        // Voice-activated write unlock. Only registered when JARVIS_UNLOCK_PIN
-        // is set; authServer() returns null otherwise and the spread below is a
-        // no-op. The server must always be permitted by decideTool — see there.
+        // Voice-activated write unlock (PIN and/or face recognition).
+        // Only registered when JARVIS_UNLOCK_PIN or JARVIS_FACE_API_URL is set;
+        // authServer() returns null otherwise. Always permitted by decideTool.
         ...(() => {
-          const srv = authServer(() => { sessionWritesUnlocked = true })
+          const captureOne = () => ask('capture', { reason: 'verificação de identidade' }, 10_000)
+          const srv = authServer(() => { sessionWritesUnlocked = true }, captureOne)
           return srv ? { jarvis_auth: srv } : {}
         })(),
       },
