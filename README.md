@@ -191,6 +191,69 @@ chose.
 
 ---
 
+## Alternative providers (no bridge required)
+
+The bridge is the default path and the most capable one. But if you cannot
+or don't want to run a local Node server, the frontend can call an
+OpenAI-compatible API directly — no bridge process needed.
+
+Set `VITE_BACKEND=openai` in `.env.local` and add three more variables:
+
+```ini
+# .env.local
+VITE_BACKEND=openai
+VITE_OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1   # or Groq, Ollama…
+VITE_OPENAI_API_KEY=nvapi-…
+VITE_OPENAI_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1
+```
+
+Any service that speaks the OpenAI chat-completions wire format works here.
+Tested providers:
+
+| Provider | Base URL | Notes |
+|---|---|---|
+| **NVIDIA NIM** | `https://integrate.api.nvidia.com/v1` | Free credits at build.nvidia.com. Nemotron 49B is a thinking model — see below. |
+| **Groq** | `https://api.groq.com/openai/v1` | Very fast inference. Llama-3 and Mixtral models work well. |
+| **Gemini** | set `VITE_BACKEND=gemini` + `VITE_GEMINI_API_KEY` | Separate adapter; not OpenAI-compat. |
+| **Ollama** | `http://localhost:11434/v1` | Fully local. No key needed (`VITE_OPENAI_API_KEY=ollama`). |
+| **OpenRouter** | `https://openrouter.ai/api/v1` | Aggregator; access many models with one key. |
+
+**Web search in this mode.** Add `VITE_BRAVE_SEARCH_KEY` (free tier at
+brave.com/search/api) and the model gets a `web_search` tool. Without it, it
+answers from training data only. Bridge mode has no such limitation — it
+inherits every MCP server you have installed.
+
+### CORS and the Vite proxy
+
+Most OpenAI-compatible APIs (NVIDIA NIM, Groq…) do not send
+`Access-Control-Allow-Origin` headers, so a direct browser fetch is
+blocked. In development the Vite server rewrites `/api/llm/*` requests to
+`VITE_OPENAI_BASE_URL`, which sidesteps CORS. This rewrite is configured in
+`vite.config.ts`. For a production build you would need an equivalent proxy
+(Nginx, a serverless function, or a CORS-permissive gateway).
+
+### Thinking models (Nemotron, DeepSeek-R1)
+
+Some models emit their internal chain-of-thought inside
+`<think>…</think>` tags before the real answer. A few also write a
+reasoning preamble *before* the opening tag. The `ThinkFilter` in
+`src/lib/providers/openai-compat.ts` is a small state machine that strips
+both from the stream before text reaches the screen or the speaker.
+
+Two known failure modes and their mitigations:
+
+- **Stream ends inside `<think>`** (model hits its token budget while still
+  reasoning — no answer is ever emitted). The fix: `max_tokens: 2048` gives
+  ~1 900 tokens of thinking room; `brain.ts` silently retries once if the
+  response comes back empty.
+
+- **Response shows partial words** ("eguir", "ro[3]"). The pre-think buffer
+  was being trimmed to 6 chars per chunk, leaving only the tail. Fixed by
+  raising the cap to 4 000 chars — enough to hold a complete response for
+  non-thinking models while still bounding memory growth.
+
+---
+
 ## Controls
 
 | Key / phrase | Does |
@@ -210,8 +273,8 @@ chose.
 Power-up plays a four-beat Iron Man start-up (`src/ui/Boot.tsx`): an
 "INITIATING SYSTEM" status bar with a segmented progress bar and boot log; then
 concentric reticle rings resolving into "J.A.R.V.I.S"; then a suit schematic;
-then the triangular arc reactor lighting up — with a start-up sound under it
-(`public/audio/boot-music.mp3`).
+then the triangular arc reactor lighting up — with an ambient start-up track
+under it and a spoken greeting once the arc reactor is lit.
 
 ---
 
@@ -238,8 +301,14 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 
 | Variable | Effect |
 |---|---|
-| `VITE_BACKEND` | `bridge` (default) or `direct` |
+| `VITE_BACKEND` | `bridge` (default), `openai`, `gemini`, or `direct` |
 | `VITE_BRIDGE_URL` | Where to reach the bridge |
+| `VITE_OPENAI_BASE_URL` | Base URL for any OpenAI-compat provider (openai mode) |
+| `VITE_OPENAI_API_KEY` | API key for that provider |
+| `VITE_OPENAI_MODEL` | Model name (e.g. `nvidia/llama-3.3-nemotron-super-49b-v1`) |
+| `VITE_GEMINI_API_KEY` | Gemini API key (gemini mode) |
+| `VITE_GEMINI_MODEL` | Gemini model name |
+| `VITE_BRAVE_SEARCH_KEY` | Brave Search key — gives the model a web_search tool (openai/gemini modes) |
 | `VITE_TTS_ENGINE` | `system` or `kokoro` |
 | `VITE_KOKORO_VOICE` | Voice for the Kokoro engine |
 | `VITE_USE_ELEVENLABS` | Force the ElevenLabs voice on |
