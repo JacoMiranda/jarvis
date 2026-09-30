@@ -84,7 +84,11 @@ function originAllowed(origin) {
   } catch {
     return false
   }
-  if (url.protocol !== 'http:') return false
+  // Allow http: and https: from localhost — in LAN mode the Vite proxy
+  // forwards the WS upgrade from https to the bridge, which sees the
+  // original browser origin (https://192.168.x.x). EXTRA_ORIGINS covers
+  // those; the fallback here only applies to localhost in either scheme.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
   if (!LOCAL_HOSTS.has(url.hostname)) return false
   return isDevPort(Number(url.port))
 }

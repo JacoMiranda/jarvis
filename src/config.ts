@@ -105,8 +105,16 @@ export const BRAVE_SEARCH_KEY = str(import.meta.env.VITE_BRAVE_SEARCH_KEY)
  * ws://localhost:8787 (which would point to the client device itself).
  */
 const _explicit = str(import.meta.env.VITE_BRIDGE_URL)
-const _host = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
-export const BRIDGE_WS_URL = _explicit ?? `ws://${_host}:8787`
+function _defaultBridgeUrl(): string {
+  if (typeof window === 'undefined') return 'ws://localhost:8787'
+  // When served over HTTPS (LAN mode), the bridge WebSocket goes through the
+  // Vite proxy at /bridge — same origin, same port, no mixed-content block.
+  if (window.location.protocol === 'https:') {
+    return `${window.location.origin.replace('https://', 'wss:')}/bridge`
+  }
+  return `ws://${window.location.hostname}:8787`
+}
+export const BRIDGE_WS_URL = _explicit ?? _defaultBridgeUrl()
 export const BRIDGE_HTTP_URL = BRIDGE_WS_URL.replace(/^ws/, 'http')
 
 /**

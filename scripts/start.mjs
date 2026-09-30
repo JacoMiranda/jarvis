@@ -157,10 +157,12 @@ if (lanHost) {
   // Collect all LAN IPv4 addresses and allow the bridge to accept connections
   // from them — this is what makes http://192.168.x.x:5173 work on other devices.
   const vitePort = port || '5173'
+  // Add both http:// and https:// — LAN mode uses HTTPS so the browser sends
+  // an https:// Origin header even though the bridge itself has no TLS.
   const lanIPs = Object.values(networkInterfaces())
     .flat()
     .filter((i) => i && i.family === 'IPv4' && !i.internal)
-    .map((i) => `http://${i.address}:${vitePort}`)
+    .flatMap((i) => [`http://${i.address}:${vitePort}`, `https://${i.address}:${vitePort}`])
   if (lanIPs.length) {
     const existing = bridgeEnv.JARVIS_ALLOWED_ORIGINS ?? ''
     bridgeEnv.JARVIS_ALLOWED_ORIGINS = existing

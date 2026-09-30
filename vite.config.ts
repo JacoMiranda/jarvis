@@ -1,14 +1,18 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Read .env.local at server start so the proxy target can be set dynamically.
   const env = loadEnv(mode, process.cwd(), '')
   const llmTarget = env.VITE_OPENAI_BASE_URL
+  const lanMode = env.JARVIS_HOST === '1'
 
   return {
-    plugins: [react()],
+    // basicSsl only activates in LAN mode — localhost works without HTTPS and
+    // adding it there just forces a cert warning for no benefit.
+    plugins: lanMode ? [react(), basicSsl()] : [react()],
     server: {
       // Honour PORT so a second instance can run alongside the first. The bridge
       // only accepts sockets from localhost:5173-5199, so stay inside that range
@@ -18,19 +22,33 @@ export default defineConfig(({ mode }) => {
       // the LAN (phones, tablets). Without this Vite only binds to 127.0.0.1.
       // env comes from loadEnv() above which reads .env.local — process.env does
       // NOT have these values because Vite never writes them into process.env.
-      host: env.JARVIS_HOST === '1',
-      proxy: llmTarget
-        ? {
-            // Browser calls /api/llm/… → Vite forwards to the real LLM API.
-            // This avoids CORS entirely: the browser talks to localhost and
-            // Node.js (no CORS restrictions) talks to the API.
-            '/api/llm': {
-              target: llmTarget,
-              changeOrigin: true,
-              rewrite: (path) => path.replace(/^\/api\/llm/, ''),
-            },
-          }
-        : {},
+      host: lanMode,
+      proxy: {
+        ...(llmTarget
+          ? {
+              // Browser calls /api/llm/… → Vite forwards to the real LLM API.
+              // This avoids CORS entirely: the browser talks to localhost and
+              // Node.js (no CORS restrictions) talks to the API.
+              '/api/llm': {
+                target: llmTarget,
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/api\/llm/, ''),
+              },
+            }
+          : {}),
+        // In LAN mode the bridge WebSocket goes through Vite's HTTPS proxy so
+        // the browser never has to open a plain ws:// connection from an HTTPS
+        // page (mixed content block). The browser connects to wss://<host>/bridge
+        // and Vite forwards to ws://localhost:8787.
+        ...(lanMode
+          ? {
+              '/bridge': {
+                target: 'ws://localhost:8787',
+                ws: true,
+              },
+            }
+          : {}),
+      },
     },
     optimizeDeps: {
       // kokoro-js pulls in `phonemizer`, which carries espeak-ng as inline WASM.
