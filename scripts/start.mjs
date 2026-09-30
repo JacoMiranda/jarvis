@@ -12,7 +12,39 @@
 
 import { spawn } from 'node:child_process'
 import process from 'node:process'
-import { cpSync, existsSync, mkdirSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+
+/**
+ * Read JARVIS_* and ELEVENLABS_* vars from .env.local so the bridge picks them
+ * up without requiring the user to export them in the shell first.
+ *
+ * Only non-VITE_ lines are forwarded — VITE_ values are for the browser bundle
+ * and have no meaning in the Node process. We do a minimal parse: strip comments,
+ * handle KEY=value and KEY="value" (no multiline, no substitution — enough for
+ * everything in .env.example).
+ */
+function loadBridgeEnv() {
+  const out = {}
+  for (const file of ['.env', '.env.local']) {
+    if (!existsSync(file)) continue
+    for (const raw of readFileSync(file, 'utf8').split('\n')) {
+      const line = raw.trim()
+      if (!line || line.startsWith('#')) continue
+      const eq = line.indexOf('=')
+      if (eq === -1) continue
+      const key = line.slice(0, eq).trim()
+      if (key.startsWith('VITE_')) continue          // browser-only, skip
+      if (!key.match(/^[A-Z][A-Z0-9_]*$/)) continue  // skip malformed lines
+      let val = line.slice(eq + 1).trim()
+      if ((val.startsWith('"') && val.endsWith('"')) ||
+          (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1)
+      }
+      out[key] = val
+    }
+  }
+  return out
+}
 
 /**
  * Put MediaPipe's WebAssembly where the page can actually load it.
@@ -105,7 +137,10 @@ process.on('SIGTERM', () => shutdown(0))
  * without widening what the bridge trusts by default.
  */
 const port = process.env.PORT
-const bridgeEnv = writes ? { JARVIS_ALLOW_WRITES: '1' } : {}
+// Pull JARVIS_* / ELEVENLABS_* from .env.local into the bridge's environment.
+// Without this the bridge never sees those vars because Vite is the one reading
+// .env.local, and it only exposes VITE_* prefixed values to the browser bundle.
+const bridgeEnv = { ...loadBridgeEnv(), ...(writes ? { JARVIS_ALLOW_WRITES: '1' } : {}) }
 if (port) {
   bridgeEnv.JARVIS_ALLOWED_ORIGINS = `http://localhost:${port},http://127.0.0.1:${port}`
   console.log(`  serving the face on port ${port}; the bridge will accept it.\n`)

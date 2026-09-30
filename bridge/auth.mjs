@@ -29,6 +29,9 @@ export function authServer(onUnlock, captureFrame) {
   const PIN = process.env.JARVIS_UNLOCK_PIN
   const FACE = process.env.JARVIS_FACE_UNLOCK === '1'
 
+  // Always register the server when face is enabled (even if only to enroll).
+  // Enroll must be available before the user has unlocked anything — it IS how
+  // they set up unlock. PIN-only setups with no face flag skip this server.
   if (!PIN && !FACE) return null
 
   const tools = []
