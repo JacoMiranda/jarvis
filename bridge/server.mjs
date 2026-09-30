@@ -21,6 +21,7 @@ import { displayServer } from './panels.mjs'
 import { uiServer } from './ui.mjs'
 import { chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
+import { authServer } from './auth.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { readFileSync, realpathSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
@@ -252,9 +253,10 @@ const VETO_EXEMPT = new Set([
   'openrouter__send-feedback',
 ])
 
-function decideTool(name) {
+// jarvis_auth tools must always pass — they ARE the unlock mechanism.
+function decideTool(name, allowWrites = ALLOW_WRITES) {
   if (READ_ONLY_BUILTINS.has(name)) return true
-  if (WRITE_BUILTINS.has(name)) return ALLOW_WRITES
+  if (WRITE_BUILTINS.has(name)) return allowWrites
 
   const server = mcpServerOf(name)
   if (server) {
@@ -264,6 +266,9 @@ function decideTool(name) {
     // here rather than left to the verb rules below, which read `ui_theme` as
     // a write and would hold the whole surface back behind ALLOW_WRITES.
     if (server === 'jarvis' || server === 'jarvis_ui') return true
+
+    // The unlock server — always permitted so it can actually unlock things.
+    if (server === 'jarvis_auth') return true
 
     // The browser server gates itself, at construction: chromeServer() only
     // builds the acting tools — click, type, form input, close tab — when
@@ -281,13 +286,13 @@ function decideTool(name) {
 
     const tool = mcpToolOf(name)
     if (EFFECTFUL_VERB.test(tool) && !VETO_EXEMPT.has(`${server}__${tool}`)) {
-      return ALLOW_WRITES
+      return allowWrites
     }
     // The session tools this bridge is developed inside count as read-only too.
     if (READ_ONLY_MCP.has(server) || server.startsWith('ccd_session')) return true
-    return READ_VERB.test(tool) ? true : ALLOW_WRITES
+    return READ_VERB.test(tool) ? true : allowWrites
   }
-  return ALLOW_WRITES
+  return allowWrites
 }
 
 const SYSTEM_PROMPT = `Você é o JARVIS. Está a falar em voz alta para uma pessoa.
@@ -414,7 +419,17 @@ Using tools:
   is read out loud, and a URL becomes "aitch tee tee pee colon slash slash".
   Put the source in the panel as a short tag like "REUTERS" instead.
 - If a tool fails or isn't connected, one plain sentence saying so.
-- If you don't know, say you don't know.`
+- If you don't know, say you don't know.
+
+Write access:
+- By default the session is read-only. Anything that writes, creates, deletes,
+  or sends is blocked.
+- If JARVIS_UNLOCK_PIN is configured and the user asks to do something blocked,
+  ask them for their access code. When they say it, call \`unlock_writes\` with
+  exactly what they said. Do not attempt to guess or construct the code yourself.
+- Once unlocked, continue with the original request.
+- If no PIN is configured, tell the user the session is read-only and they need
+  to restart with write access enabled.`
 
 /**
  * ElevenLabs credentials, borrowed from the MCP server config.
@@ -1112,6 +1127,11 @@ wss.on('connection', (socket) => {
    * is_error, anything else really did execute and has earned its badge, a
    * beat late. Nothing is ever announced for work that didn't happen.
    */
+  // Per-session write unlock: set to true when the user speaks the correct PIN.
+  // Resets on every new connection, so each session starts locked.
+  let sessionWritesUnlocked = false
+  const allowWrites = () => ALLOW_WRITES || sessionWritesUnlocked
+
   const seenTools = new Set()
   const heldTools = new Map()
 
@@ -1157,7 +1177,7 @@ wss.on('connection', (socket) => {
     // interface is the interface talking about itself, not work being done for
     // the user, and the badge would be describing the very thing they can see.
     if (name.startsWith('mcp__jarvis_ui__')) return
-    if (decideTool(name)) return sendTurn({ type: 'tool', name })
+    if (decideTool(name, allowWrites())) return sendTurn({ type: 'tool', name })
     if (id) heldTools.set(id, name)
   }
 
@@ -1189,9 +1209,16 @@ wss.on('connection', (socket) => {
         // The user's own Chrome, over the extension's native-host socket. It
         // holds no per-connection state, but it is built here with the rest so
         // the write gate is read once, at the same point as everything else.
-        jarvis_chrome: chromeServer({ allowWrites: ALLOW_WRITES }),
+        jarvis_chrome: chromeServer({ allowWrites: allowWrites() }),
         // The camera, which unlike everything else here has to ask and wait.
         jarvis_eyes: visionServer(ask),
+        // Voice-activated write unlock. Only registered when JARVIS_UNLOCK_PIN
+        // is set; authServer() returns null otherwise and the spread below is a
+        // no-op. The server must always be permitted by decideTool — see there.
+        ...(() => {
+          const srv = authServer(() => { sessionWritesUnlocked = true })
+          return srv ? { jarvis_auth: srv } : {}
+        })(),
       },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk
@@ -1240,7 +1267,7 @@ wss.on('connection', (socket) => {
       // something with a consequence, like a `touch`. So a deny here is
       // reliable; an absence of a call here is not proof nothing ran.
       canUseTool: async (toolName) => {
-        const ok = decideTool(toolName)
+        const ok = decideTool(toolName, allowWrites())
         console.log(`[jarvis] tool ${toolName} -> ${ok ? 'allow' : 'deny'}`)
         return ok
           ? { behavior: 'allow' }
