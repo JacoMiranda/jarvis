@@ -16,7 +16,9 @@ export default defineConfig(({ mode }) => {
       port: Number(process.env.PORT) || 5173,
       // Listen on all interfaces so the page is reachable from other devices on
       // the LAN (phones, tablets). Without this Vite only binds to 127.0.0.1.
-      host: process.env.JARVIS_HOST === '1' || false,
+      // env comes from loadEnv() above which reads .env.local — process.env does
+      // NOT have these values because Vite never writes them into process.env.
+      host: env.JARVIS_HOST === '1',
       proxy: llmTarget
         ? {
             // Browser calls /api/llm/… → Vite forwards to the real LLM API.
