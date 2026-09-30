@@ -14,6 +14,9 @@ export default defineConfig(({ mode }) => {
       // only accepts sockets from localhost:5173-5199, so stay inside that range
       // or set JARVIS_ALLOWED_ORIGINS to match.
       port: Number(process.env.PORT) || 5173,
+      // Listen on all interfaces so the page is reachable from other devices on
+      // the LAN (phones, tablets). Without this Vite only binds to 127.0.0.1.
+      host: process.env.JARVIS_HOST === '1' || false,
       proxy: llmTarget
         ? {
             // Browser calls /api/llm/… → Vite forwards to the real LLM API.

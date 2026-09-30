@@ -13,6 +13,7 @@
 import { spawn } from 'node:child_process'
 import process from 'node:process'
 import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { networkInterfaces } from 'node:os'
 
 /**
  * Read JARVIS_* and ELEVENLABS_* vars from .env.local so the bridge picks them
@@ -141,9 +142,32 @@ const port = process.env.PORT
 // Without this the bridge never sees those vars because Vite is the one reading
 // .env.local, and it only exposes VITE_* prefixed values to the browser bundle.
 const bridgeEnv = { ...loadBridgeEnv(), ...(writes ? { JARVIS_ALLOW_WRITES: '1' } : {}) }
+
+const lanHost = process.env.JARVIS_HOST === '1' || bridgeEnv.JARVIS_HOST === '1'
+
 if (port) {
-  bridgeEnv.JARVIS_ALLOWED_ORIGINS = `http://localhost:${port},http://127.0.0.1:${port}`
+  // Append to any value already set by .env.local rather than overwriting it.
+  const existing = bridgeEnv.JARVIS_ALLOWED_ORIGINS ?? ''
+  const extra = `http://localhost:${port},http://127.0.0.1:${port}`
+  bridgeEnv.JARVIS_ALLOWED_ORIGINS = existing ? `${existing},${extra}` : extra
   console.log(`  serving the face on port ${port}; the bridge will accept it.\n`)
+}
+
+if (lanHost) {
+  // Collect all LAN IPv4 addresses and allow the bridge to accept connections
+  // from them — this is what makes http://192.168.x.x:5173 work on other devices.
+  const vitePort = port || '5173'
+  const lanIPs = Object.values(networkInterfaces())
+    .flat()
+    .filter((i) => i && i.family === 'IPv4' && !i.internal)
+    .map((i) => `http://${i.address}:${vitePort}`)
+  if (lanIPs.length) {
+    const existing = bridgeEnv.JARVIS_ALLOWED_ORIGINS ?? ''
+    bridgeEnv.JARVIS_ALLOWED_ORIGINS = existing
+      ? `${existing},${lanIPs.join(',')}`
+      : lanIPs.join(',')
+    console.log(`  LAN mode: bridge will accept ${lanIPs.join(', ')}\n`)
+  }
 }
 
 vendorWasm()

@@ -98,8 +98,15 @@ export const BRAVE_SEARCH_KEY = str(import.meta.env.VITE_BRAVE_SEARCH_KEY)
  * places that talk to it, so moving off the default port is a single edit.
  * `wss://` maps to `https://` on its own, which is why this is a prefix swap
  * rather than a hardcoded scheme.
+ *
+ * When no explicit URL is configured we derive it from the page's own hostname.
+ * This makes LAN access work automatically: a browser loading the page from
+ * http://192.168.0.8:5173 will connect to ws://192.168.0.8:8787 rather than
+ * ws://localhost:8787 (which would point to the client device itself).
  */
-export const BRIDGE_WS_URL = str(import.meta.env.VITE_BRIDGE_URL) ?? 'ws://localhost:8787'
+const _explicit = str(import.meta.env.VITE_BRIDGE_URL)
+const _host = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+export const BRIDGE_WS_URL = _explicit ?? `ws://${_host}:8787`
 export const BRIDGE_HTTP_URL = BRIDGE_WS_URL.replace(/^ws/, 'http')
 
 /**
