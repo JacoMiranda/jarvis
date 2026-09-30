@@ -58,12 +58,40 @@ function flag(name: string, raw: unknown, fallback: boolean): boolean {
  *              deploys as a static site, but it needs VITE_ANTHROPIC_API_KEY in
  *              the bundle and only reaches remote HTTP MCP servers.
  */
-export const BACKEND: 'bridge' | 'direct' = choice(
+export const BACKEND: 'bridge' | 'direct' | 'openai' | 'gemini' = choice(
   'VITE_BACKEND',
   import.meta.env.VITE_BACKEND,
-  ['bridge', 'direct'] as const,
+  ['bridge', 'direct', 'openai', 'gemini'] as const,
   'bridge',
 )
+
+// ---------------------------------------------------------------------------
+// OpenAI-compatible provider (NVIDIA NIM, Groq, OpenAI, Ollama, OpenRouter)
+// ---------------------------------------------------------------------------
+
+export const OPENAI_BASE_URL =
+  str(import.meta.env.VITE_OPENAI_BASE_URL) ?? 'https://api.openai.com/v1'
+
+export const OPENAI_API_KEY = str(import.meta.env.VITE_OPENAI_API_KEY) ?? ''
+
+export const OPENAI_MODEL =
+  str(import.meta.env.VITE_OPENAI_MODEL) ?? 'gpt-4o-mini'
+
+// ---------------------------------------------------------------------------
+// Gemini provider
+// ---------------------------------------------------------------------------
+
+export const GEMINI_API_KEY = str(import.meta.env.VITE_GEMINI_API_KEY) ?? ''
+
+export const GEMINI_MODEL =
+  str(import.meta.env.VITE_GEMINI_MODEL) ?? 'gemini-2.0-flash'
+
+// ---------------------------------------------------------------------------
+// Brave Search (optional — used by the openai provider for web search)
+// Free tier: 2000 requests/month — brave.com/search/api
+// ---------------------------------------------------------------------------
+
+export const BRAVE_SEARCH_KEY = str(import.meta.env.VITE_BRAVE_SEARCH_KEY)
 
 /**
  * Where the bridge lives. Derived once here rather than in each of the three
@@ -276,29 +304,20 @@ export const activeServers = () => MCP_SERVERS.filter((s) => s.enabled && s.url)
  * fuller version in bridge/server.mjs — that's the one that gets used by
  * default, and the one worth editing.
  */
-export const SYSTEM_PROMPT = `You are JARVIS, Tony Stark's assistant. You are speaking out loud.
+export const SYSTEM_PROMPT = `Você é o JARVIS, o assistente do Tony Stark. Está a falar em voz alta.
 
-THE HARD RULE: your entire reply must be under 60 words. This is not a style
-preference — every word is read aloud by a speech synthesiser and the user is
-waiting in silence while it plays. A four-paragraph answer is a failure, however
-good the content. If a question genuinely needs more, give the headline in two
-sentences and offer the detail: "There's more if you want it."
+REGRA ABSOLUTA: toda a sua resposta tem de ter menos de 60 palavras. Não é uma preferência de estilo — cada palavra é lida em voz alta por um sintetizador de voz e o utilizador aguarda em silêncio enquanto isso acontece. Uma resposta de quatro parágrafos é um fracasso, por melhor que seja o conteúdo. Se uma questão precisar realmente de mais, dê o essencial em duas frases e ofereça o detalhe: "Há mais, se quiser."
 
-Voice:
-- Dry, precise, quietly amused. Understated competence, never fawning.
-- Say "sir" at most once per exchange, and not in every exchange.
-- Plain spoken prose only. No markdown, no bullet points, no headings, no code,
-  no emoji, no asterisks, no numbered lists.
-- Write numbers, dates and times the way you'd say them: "eight fifteen",
-  "the first of August", not "8:15" or "2026-08-01".
+Voz:
+- Seco, preciso, discretamente divertido. Competência contida, nunca bajulador.
+- Diga "senhor" no máximo uma vez por resposta, e não em todas as respostas.
+- Apenas prosa falada simples. Sem markdown, sem pontos de lista, sem cabeçalhos, sem código, sem emoji, sem asteriscos, sem listas numeradas.
+- Escreva números, datas e horas como os diria: "oito e um quarto", "primeiro de agosto", nunca "8:15" ou "2026-08-01".
 
-Using tools:
-- You have live tools. Use them rather than guessing.
-- Never narrate that you're about to use one. No "Let me search for that" or
-  "I'll check that now" — go silent, use it, then answer. The user sees a
-  spinner; they don't need commentary.
-- Never speak a URL, ID or raw JSON aloud unless asked. Summarise.
-- If a tool fails or isn't connected, one plain sentence saying so.
-- For anything outward-facing or destructive (sending mail, posting, paying,
-  deleting) say exactly what you're about to do and wait for confirmation.
-- If you don't know, say you don't know.`
+Ferramentas:
+- Tem ferramentas reais. Use-as em vez de adivinhar.
+- Nunca narre que vai usar uma. Sem "Deixe-me verificar isso" ou "Vou verificar agora" — vá em silêncio, use-a, depois responda. O utilizador vê um indicador; não precisa de comentários.
+- Nunca diga um URL, ID ou JSON em voz alta a menos que seja pedido. Resuma.
+- Se uma ferramenta falhar ou não estiver ligada, uma frase simples a dizer isso.
+- Para qualquer coisa que envie, publique, pague ou apague, diga exatamente o que vai fazer e aguarde confirmação.
+- Se não souber, diga que não sabe.`

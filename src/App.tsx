@@ -359,6 +359,15 @@ export default function App() {
     music.playBoot()
     music.startAmbient()
 
+    // Boot greeting in Portuguese. Fires about a second into the animation,
+    // after the reactor sound has a moment to land. Not awaited — the boot
+    // sequence continues while he speaks.
+    setTimeout(() => {
+      const intro = createSpeaker()
+      intro.say('Sistemas iniciados. JARVIS online, senhor.')
+      void intro.end()
+    }, 1000)
+
     s.setPhase('boot')
 
     watchServers((servers) => store.getState().setConnected(servers))
@@ -596,7 +605,7 @@ export default function App() {
         silence()
         const demo = createSpeaker()
         speaker.current = demo
-        demo.say(`Voice set to ${name.replace(/\(.*?\)/g, '').trim()}. At your service, sir.`)
+        demo.say(`Voz alterada para ${name.replace(/\(.*?\)/g, '').trim()}. Às suas ordens, senhor.`)
         void demo.end()
         return
       }
@@ -638,7 +647,7 @@ export default function App() {
         silence()
         const t = createSpeaker()
         speaker.current = t
-        t.say('Audio test. If you can hear this, speech output is working, sir.')
+        t.say('Teste de áudio. Se está a ouvir isto, o sistema de voz está operacional, senhor.')
         void t.end().then(() => {
           const d = (window as unknown as Record<string, Record<string, unknown>>).__tts
           console.info('[jarvis] audio test →', d)

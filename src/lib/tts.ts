@@ -162,57 +162,68 @@ const MAX_UNSPOKEN = 220
 // Voice selection
 // ---------------------------------------------------------------------------
 
-const VOICE_PREF_KEY = 'jarvis.voice'
+// v2: bumped when the scoring changed to prefer male pt-BR voices; clears
+// any Google pt-BR (female) preference saved under the old key.
+const VOICE_PREF_KEY = 'jarvis.voice.v2'
 
 /**
- * Rank installed voices by how close they are to the character: a British
- * male, low and level, not a novelty voice.
- *
- * The big win on macOS is the Enhanced/Premium variant of Daniel. The stock
- * "Daniel" is a compact voice from a decade ago and sounds it; the Enhanced
- * download is free (System Settings → Accessibility → Spoken Content → System
- * Voice → Manage Voices) and once installed it appears here automatically.
+ * Rank installed voices. Portuguese (pt-BR) voices are preferred — the app
+ * speaks Portuguese, so a native voice sounds right where a British accent
+ * sounds foreign. English voices are kept as a fallback for machines that
+ * have none installed.
  */
 function score(v: SpeechSynthesisVoice): number {
   const n = v.name.toLowerCase()
   let s = 0
 
-  // The macOS British male, and the closest thing to the character available
-  // without leaving the machine.
-  if (n.startsWith('daniel')) s += 100
-  else if (n.includes('google uk english male')) s += 85
-  else if (/\b(oliver|arthur|jamie|malcolm)\b/.test(n)) s += 80
-  // Newer macOS en-GB male voices — casual, but serviceable.
-  else if (/\b(reed|rocko|eddy)\b/.test(n)) s += 40
+  // Brazilian Portuguese voices — best match for the language in use.
+  if (/pt[-_]br/i.test(v.lang)) {
+    s += 200
+    // Microsoft Neural voices on Windows 11 are the highest quality.
+    if (n.includes('neural') || n.includes('antonio') || n.includes('thalita')) s += 40
+    // Prefer male-presenting names for the JARVIS character.
+    // Intentionally larger than the Google generic bonus so "Microsoft Daniel"
+    // (225) beats "Google português do Brasil" (205) — the Google voice is female.
+    if (/\b(antonio|ricardo|daniel|francisco|pedro|jorge|carlos)\b/.test(n)) s += 25
+    // Google pt-BR voices are usable but tend to be female-presenting.
+    if (n.includes('google')) s += 5
+  } else if (/^pt/i.test(v.lang)) {
+    // European Portuguese — acceptable if no pt-BR is available.
+    s += 150
+    if (n.includes('neural')) s += 40
+  } else {
+    // English fallback: British male, and the closest thing to the character
+    // without a Portuguese voice installed.
+    if (n.startsWith('daniel')) s += 100
+    else if (n.includes('google uk english male')) s += 85
+    else if (/\b(oliver|arthur|jamie|malcolm)\b/.test(n)) s += 80
+    else if (/\b(reed|rocko|eddy)\b/.test(n)) s += 40
+  }
 
   // Higher-quality variants of whatever matched above.
   if (n.includes('premium')) s += 30
   else if (n.includes('enhanced')) s += 20
 
-  if (/en[-_]gb/i.test(v.lang)) s += 25
-  else if (/^en/i.test(v.lang)) s += 5
-
-  // Voices that clearly aren't a butler.
+  // Voices that clearly aren't useful.
   if (/grandma|grandpa|bubbles|jester|bells|boing|whisper|zarvox|superstar|trinoids|wobble|bahh|organ|cellos|bad news|good news/.test(n)) {
     s -= 200
   }
-  // Female-presenting names across the English sets.
-  if (/\b(flo|sandy|shelley|kate|serena|fiona|moira|karen|tessa|samantha|zoe|allison|ava|susan)\b/.test(n)) {
+  // Female-presenting names.
+  if (/\b(flo|sandy|shelley|kate|serena|fiona|moira|karen|tessa|samantha|zoe|allison|ava|susan|maria|francisca|vitoria|heloisa|leila)\b/.test(n) && !/pt/i.test(v.lang)) {
     s -= 60
   }
 
   return s
 }
 
-/** Only voices that scored on a name match, not merely on being English —
- *  otherwise the picker cycles through a dozen US novelty voices. */
-const USABLE = 40
+/** Only voices that scored positively — filters out unranked system novelties. */
+const USABLE = 20
 
 /** Best-first list of usable voices — also what the voice picker cycles. */
 export function candidateVoices(): SpeechSynthesisVoice[] {
   return speechSynthesis
     .getVoices()
-    .filter((v) => /^en/i.test(v.lang))
+    .filter((v) => /^(pt|en)/i.test(v.lang))
     .map((v) => ({ v, s: score(v) }))
     .filter((x) => x.s >= USABLE)
     .sort((a, b) => b.s - a.s)
@@ -232,11 +243,16 @@ function pickVoice(): SpeechSynthesisVoice | null {
   const saved = localStorage.getItem(VOICE_PREF_KEY)
   if (saved) {
     const hit = all.find((v) => v.name === saved)
-    if (hit) return (cachedVoice = hit)
+    if (hit) {
+      // Only honour a non-Portuguese preference when no Portuguese voice is
+      // available — avoids an English voice being re-applied after translation.
+      const hasPt = all.some((v) => /^pt/i.test(v.lang))
+      if (!hasPt || /^pt/i.test(hit.lang)) return (cachedVoice = hit)
+    }
     localStorage.removeItem(VOICE_PREF_KEY)
   }
 
-  cachedVoice = candidateVoices()[0] ?? all.find((v) => /^en/i.test(v.lang)) ?? null
+  cachedVoice = candidateVoices()[0] ?? all.find((v) => /^pt/i.test(v.lang)) ?? all.find((v) => /^en/i.test(v.lang)) ?? null
   return cachedVoice
 }
 
@@ -320,10 +336,10 @@ function shape(text: string): string {
       .replace(/https?:\/\/[^\s]*[^\s.,;:!?)\]]/g, '')
       .replace(/[*_`#>]+/g, '')
       .replace(/^\s*[-•]\s+/gm, '')
-      // The vocative wants its comma — that small beat before "sir" does most
+      // The vocative wants its comma — that small beat before "senhor" does most
       // of the characterisation. Anchored to a following pause or end of line
-      // so the honorific is left alone: "Sir Isaac Newton" is not a vocative.
-      .replace(/([^,\s])\s+(sir)(\s*[.,!?;:]|\s*$)/gi, '$1, $2$3')
+      // so the honorific is left alone when not a vocative.
+      .replace(/([^,\s])\s+(senhor)(\s*[.,!?;:]|\s*$)/gi, '$1, $2$3')
       .replace(/\s+/g, ' ')
       .trim()
   )
@@ -476,8 +492,9 @@ export function createSpeaker(): Speaker {
 
       const u = new SpeechSynthesisUtterance(text)
       const voice = pickVoice()
+      console.log('[tts] speak:', JSON.stringify(text.slice(0, 60)), '| voice:', voice?.name ?? 'default')
       if (voice) u.voice = voice
-      u.lang = voice?.lang ?? 'en-GB'
+      u.lang = voice?.lang ?? 'pt-BR'
       // Deliberate, and deliberately invariant — the character's pace does not
       // change with stakes, and that steadiness is most of the effect. This
       // lands around 130 wpm, below the median for film dialogue.

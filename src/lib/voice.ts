@@ -78,7 +78,7 @@ const WAKE_DEBOUNCE = 1500
  * indication why. Better a rare false wake than a name that does not answer.
  */
 const WAKE =
-  /\b(?:hey|hi|ok|okay|yo)?\s*(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv)\b(?!'s)/i
+  /\b(?:hey|hi|ok|okay|yo|ei|oi|opa|olá|ola)?\s*(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv|jarvis|jávis|jarvise)\b(?!'s)/i
 
 /** Everything after the wake phrase, which is usually the actual command. */
 function afterWake(text: string): string {
@@ -123,7 +123,7 @@ function afterWake(text: string): string {
  * last word of a real request.
  */
 const CONTINUES =
-  /\b(and|or|but|so|because|since|if|when|while|that|which|who|whose|to|of|in|on|at|by|for|with|from|about|into|onto|over|under|between|through|the|a|an|my|your|his|her|its|our|their|is|are|was|were|be|been|do|does|did|have|has|had|can|could|would|should|will|shall|might|must|like|than|then|as|very|really|just|some|any|all|both|either|neither)$/i
+  /\b(and|or|but|so|because|since|if|when|while|that|which|who|whose|to|of|in|on|at|by|for|with|from|about|into|onto|over|under|between|through|the|a|an|my|your|his|her|its|our|their|is|are|was|were|be|been|do|does|did|have|has|had|can|could|would|should|will|shall|might|must|like|than|then|as|very|really|just|some|any|all|both|either|neither|e|ou|mas|então|porque|desde|se|quando|enquanto|que|o|a|os|as|um|uma|meu|minha|seu|sua|nosso|nossa|de|do|da|em|no|na|por|para|com|sobre|entre|através|pelo|pela|é|são|era|foram|ser|sido|fazer|faz|fez|ter|tem|tinha|pode|poderia|deve|deveria|vai|vou|irá|como|muito|bem|só|algum|alguma|todos|ambos)$/i
 
 /** Trailing punctuation a transcriber emits mid-thought. */
 const TRAILS = /[,;:–—-]$/
@@ -267,7 +267,7 @@ const norm = (s: string) =>
  * would be the single most infuriating failure this file could have.
  */
 const OVERRIDE =
-  /\b(stop|wait|jarvis|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no)\b/i
+  /\b(stop|wait|jarvis|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no|pare|espera|chega|cancela|silêncio|esquece|não)\b/i
 
 /**
  * Words too common to be evidence of anything.
@@ -284,7 +284,12 @@ const STOP = new Set(
     'our their what which who how why when where do does did can could would ' +
     'should will shall not no yes if then than as about into over under out up ' +
     'down one two three first second third now here there just very really got ' +
-    'get have has had say said tell me okay ok well right').split(' '),
+    'get have has had say said tell me okay ok well right ' +
+    'o a os as um uma e ou mas então de do da em no na por para com que ' +
+    'eu tu ele ela nós eles me lhe nos se isso aquilo este esta estes estas ' +
+    'meu minha seu sua nosso nossa o que como quando onde porque quem ' +
+    'fazer faz fez ter tem tinha pode vai ir sim não ok olá ei oi bem ' +
+    'um dois três primeiro segundo terceiro agora aqui ali lá só muito').split(' '),
 )
 
 /**
@@ -393,8 +398,8 @@ export async function startVoice(h: VoiceHandlers): Promise<Voice> {
     diag.lastError = 'mic'
     h.onError(
       err instanceof DOMException && err.name === 'NotAllowedError'
-        ? 'Microphone access denied — voice input is unavailable.'
-        : 'No microphone available.',
+        ? 'Acesso ao microfone negado — entrada de voz indisponível.'
+        : 'Nenhum microfone disponível.',
     )
     return { stop: () => {}, live: () => false }
   }
@@ -603,7 +608,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   const Ctor =
     (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
   if (!Ctor) {
-    h.onError('This browser has no speech recognition — use Chrome or Edge, or add an ElevenLabs key.')
+    h.onError('Este browser não tem reconhecimento de voz — use Chrome ou Edge, ou adicione uma chave ElevenLabs.')
     return { stop: () => {}, live: () => false }
   }
 
@@ -760,7 +765,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     rec = new Ctor()
     rec.continuous = true
     rec.interimResults = true
-    rec.lang = 'en-GB'
+    rec.lang = 'pt-BR'
     rec.onstart = () => {
       running = true
       diag.running = true
@@ -773,7 +778,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
         stopped = true
         diag.running = false
-        h.onError('Microphone access was refused — voice input is unavailable.')
+        h.onError('Acesso ao microfone recusado — entrada de voz indisponível.')
       }
     }
     rec.onend = () => {
