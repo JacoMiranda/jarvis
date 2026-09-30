@@ -429,6 +429,7 @@ Write access:
     said — do not guess, infer or construct the code yourself.
   - \`unlock_with_face\`: tell the user to look at the camera, then call this tool
     (no argument). It captures one frame and verifies locally — no code needed.
+    If they have not registered yet, offer to do so with \`enroll_face\`.
 - Once unlocked, continue with the original request without announcing it.
 - If neither unlock tool is registered, tell the user the session is read-only
   and they need to restart with write access enabled.`
